@@ -67,6 +67,7 @@ export default function App() {
 
   // Connection Indicator
   const [isDbActive, setIsDbActive] = useState(isSupabaseConfigured());
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; details: string; supabase_url?: string; last_penerima_error?: string; last_penyaluran_error?: string } | null>(null);
 
   // Inactivity timeout reference (30 minutes)
   const inactivityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +111,15 @@ export default function App() {
       const psList = await DataService.getPenyaluran();
       setPenerima(pmList);
       setPenyaluran(psList);
+
+      // Check server DB connection status
+      fetch('/api/db-status')
+        .then(r => r.json())
+        .then(status => {
+          setDbStatus(status);
+          setIsDbActive(status.connected);
+        })
+        .catch(err => console.warn('Gagal memuat status DB dari server', err));
     } catch (err: any) {
       triggerToast('Gagal memuat database: ' + err.message, 'err');
     } finally {
@@ -130,10 +140,18 @@ export default function App() {
       DataService.getPenyaluran().then(psList => {
         setPenyaluran(psList);
       }).catch(err => console.debug('Quiet sync fail', err));
+
+      fetch('/api/db-status')
+        .then(r => r.json())
+        .then(status => {
+          setDbStatus(status);
+          setIsDbActive(status.connected);
+        })
+        .catch(err => console.warn('Quiet db status check failed', err));
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [loadDatabase, isDbActive]);
+  }, [loadDatabase]);
 
   // 3. User Inactivity Auto-Logout Handler (30 minutes timer)
   const resetInactivityTimer = useCallback(() => {
@@ -647,8 +665,32 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              /* Core tab layout selection */
               <div className="animate-in fade-in duration-200">
+                {/* Supabase Diagnostics Warning Banner */}
+                {dbStatus && !dbStatus.connected && (
+                  <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-300 flex flex-col sm:flex-row gap-4 items-start animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 shrink-0">
+                      <ShieldAlert className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <h4 className="font-bold text-xs sm:text-sm">DATA BELUM SINKRON ANTAR PERANGKAT (LAPTOP & HP)</h4>
+                      <p className="text-[11px] sm:text-xs text-amber-750 dark:text-amber-400 leading-relaxed">
+                        Aplikasi saat ini berjalan dalam <strong>Mode Sandbox Lokal (Luring)</strong> karena server tidak terhubung ke database online Supabase Anda. Selama masalah ini belum diatasi, data baru tidak akan tersinkronisasi antar perangkat (Laptop & HP)!
+                      </p>
+                      <div className="p-2.5 mt-2 bg-white/70 dark:bg-black/35 rounded-lg text-[10px] sm:text-xs font-mono break-all border border-amber-250/60 dark:border-amber-900/40">
+                        <span className="font-bold text-amber-950 dark:text-amber-305 block mb-0.5">Detail Kendala Server:</span>
+                        {dbStatus.details}
+                        {dbStatus.last_penerima_error && <p className="mt-1 text-red-650 dark:text-red-400 font-semibold">Tabel Penerima: {dbStatus.last_penerima_error}</p>}
+                        {dbStatus.last_penyaluran_error && <p className="mt-1 text-red-650 dark:text-red-400 font-semibold">Tabel Penyaluran: {dbStatus.last_penyaluran_error}</p>}
+                      </div>
+                      <p className="text-[10px] text-amber-600 dark:text-amber-450 mt-2">
+                        💡 <strong>Solusi Mudah:</strong> Pastikan Anda telah membuat tabel-tabel Supabase sesuai dengan SQL Setup. Klik opsi <strong>LOCAL MODE (SANDBOX)</strong> di menu atas untuk menyalin kueri SQL Setup dan menempelkannya di dashboard Supabase SQL Editor Anda!
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Core tab layout selection */}
                 {activeTab === 'dashboard' && (
                   <StatsDashboard penerima={penerima} penyaluran={penyaluran} />
                 )}

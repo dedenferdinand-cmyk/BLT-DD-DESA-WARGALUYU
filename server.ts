@@ -169,6 +169,9 @@ async function startServer() {
 
   console.log(`[SYS] Konfigurasi Supabase terdeteksi: URL=${SUPABASE_URL}`);
 
+  let lastPenerimaError: string | null = null;
+  let lastPenyaluranError: string | null = null;
+
   // --- Helper to check and sync Supabase state ---
   const getPenerimaList = async (): Promise<PenerimaBlt[]> => {
     if (supabase) {
@@ -180,6 +183,8 @@ async function startServer() {
 
         if (error) throw error;
         
+        lastPenerimaError = null;
+
         // If Supabase is connected but empty, let's auto-seed it from our default local seed list!
         if (data && data.length === 0) {
           console.log("[SYS] Supabase terhubung tapi kosong, memulai otomatis proses migrasi/seeding awal...");
@@ -189,12 +194,14 @@ async function startServer() {
             if (seededData) return seededData as PenerimaBlt[];
           } else {
             console.warn("[WARN] Gagal menyemai otomatis data awal Supabase:", seedErr.message);
+            lastPenerimaError = "Semaian awal gagal: " + seedErr.message;
           }
         }
         
         return data as PenerimaBlt[];
       } catch (err: any) {
-        console.warn("[WARN] Gagal mengambil dari Supabase, gunakan file lokal:", err.message || err);
+        lastPenerimaError = err.message || JSON.stringify(err);
+        console.warn("[WARN] Gagal mengambil dari Supabase, gunakan file lokal:", lastPenerimaError);
       }
     }
     return readDb().penerima;
@@ -210,6 +217,8 @@ async function startServer() {
 
         if (error) throw error;
         
+        lastPenyaluranError = null;
+
         // Auto seed penyaluran if connected but empty
         if (data && data.length === 0 && SEED_PENYALURAN.length > 0) {
           console.log("[SYS] Supabase menyemai data penyaluran awal secara otomatis...");
@@ -220,13 +229,42 @@ async function startServer() {
 
         return data as PenyaluranBlt[];
       } catch (err: any) {
-        console.warn("[WARN] Gagal mengambil riwayat dari Supabase:", err.message || err);
+        lastPenyaluranError = err.message || JSON.stringify(err);
+        console.warn("[WARN] Gagal mengambil riwayat dari Supabase:", lastPenyaluranError);
       }
     }
     return readDb().penyaluran;
   };
 
   // --- API Endpoints ---
+
+  // Connection Diagnostics Endpoint
+  app.get("/api/db-status", async (req, res) => {
+    let connectionSuccess = false;
+    let details = "";
+    if (!supabase) {
+      details = "Klien Supabase tidak terinisialisasi. Periksa kredensial di env atau lokal!";
+    } else {
+      try {
+        const { error } = await supabase.from("penerima_blt").select("id").limit(1);
+        if (error) {
+          details = "Supabase terhubung tapi error: " + error.message;
+        } else {
+          connectionSuccess = true;
+          details = "SINKRON: Terhubung & Dapat Mengakses Tabel Supabase dengan Sukses!";
+        }
+      } catch (err: any) {
+        details = "Koneksi gagal total: " + (err.message || err);
+      }
+    }
+    res.json({
+      connected: connectionSuccess,
+      details,
+      supabase_url: SUPABASE_URL,
+      last_penerima_error: lastPenerimaError,
+      last_penyaluran_error: lastPenyaluranError
+    });
+  });
 
   // Health check
   app.get("/api/health", (req, res) => {
