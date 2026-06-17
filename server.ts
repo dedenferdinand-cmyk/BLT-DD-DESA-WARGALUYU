@@ -4,11 +4,12 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://hflyqbvgsaqfzjaivkxi.supabase.co";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_e9FyOuOPSj8InYq4PSeQFA_7x72cMZA";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmbHlxYnZnc2FxZnpqYWl2a3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDcxMzUsImV4cCI6MjA5NzI4MzEzNX0._25Afyld7FMl5YXFitPnrGaZ8v47xofkDezriFtPAUU";
 
 // Initialize Supabase Client
 const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
@@ -159,6 +160,37 @@ function writeDb(data: { penerima: PenerimaBlt[]; penyaluran: PenyaluranBlt[] })
   }
 }
 
+function toDeterministicUuid(str: string): string {
+  if (!str) return "00000000-0000-0000-0000-000000000000";
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) {
+    return str.toLowerCase();
+  }
+  const hash = crypto.createHash("md5").update(str).digest("hex");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    hash.slice(12, 16),
+    hash.slice(16, 20),
+    hash.slice(20, 32)
+  ].join("-");
+}
+
+function mapPenerimaToSupabase(p: PenerimaBlt): any {
+  return {
+    ...p,
+    id: toDeterministicUuid(p.id)
+  };
+}
+
+function mapPenyaluranToSupabase(s: PenyaluranBlt): any {
+  return {
+    ...s,
+    id: toDeterministicUuid(s.id),
+    penerima_id: toDeterministicUuid(s.penerima_id)
+  };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -185,11 +217,25 @@ async function startServer() {
         
         lastPenerimaError = null;
 
-        // If Supabase is connected but empty, let's auto-seed it from our default local seed list!
+        // If Supabase is connected but empty, let's auto-migrate/seed it from our current active local file!
         if (data && data.length === 0) {
           console.log("[SYS] Supabase terhubung tapi kosong, memulai otomatis proses migrasi/seeding awal...");
-          const { error: seedErr } = await supabase.from("penerima_blt").insert(SEED_PENERIMA);
+          const activeLocal = readDb();
+          const seedPenerimaList = activeLocal.penerima && activeLocal.penerima.length > 0 ? activeLocal.penerima : SEED_PENERIMA;
+          const mappedSeeds = seedPenerimaList.map(mapPenerimaToSupabase);
+          
+          const { error: seedErr } = await supabase.from("penerima_blt").insert(mappedSeeds);
           if (!seedErr) {
+            console.log("[SYS] Migrasi otomatis data penerima ke Supabase sukses!");
+            
+            // Migrate local histories if they exist
+            const seedPenyaluranList = activeLocal.penyaluran && activeLocal.penyaluran.length > 0 ? activeLocal.penyaluran : SEED_PENYALURAN;
+            if (seedPenyaluranList.length > 0) {
+              const mappedPenSeeds = seedPenyaluranList.map(mapPenyaluranToSupabase);
+              await supabase.from("penyaluran_blt").insert(mappedPenSeeds);
+              console.log("[SYS] Migrasi otomatis data riwayat penyaluran ke Supabase sukses!");
+            }
+            
             const { data: seededData } = await supabase.from("penerima_blt").select("*").order("created_at", { ascending: false });
             if (seededData) return seededData as PenerimaBlt[];
           } else {
@@ -222,7 +268,8 @@ async function startServer() {
         // Auto seed penyaluran if connected but empty
         if (data && data.length === 0 && SEED_PENYALURAN.length > 0) {
           console.log("[SYS] Supabase menyemai data penyaluran awal secara otomatis...");
-          await supabase.from("penyaluran_blt").insert(SEED_PENYALURAN);
+          const mappedSeeds = SEED_PENYALURAN.map(mapPenyaluranToSupabase);
+          await supabase.from("penyaluran_blt").insert(mappedSeeds);
           const { data: seededData } = await supabase.from("penyaluran_blt").select("*").order("created_at", { ascending: false });
           if (seededData) return seededData as PenyaluranBlt[];
         }
@@ -285,9 +332,11 @@ async function startServer() {
   // Add Penerima
   app.post("/api/penerima", async (req, res) => {
     const payload = req.body;
+    // Utilize native crypto randomUUID for fully compliant database IDs on new records
+    const generatedId = crypto.randomUUID();
     const item: PenerimaBlt = {
       ...payload,
-      id: "p_" + Date.now() + Math.random().toString(36).substring(2, 6),
+      id: generatedId,
       status: "Belum Disalurkan",
       created_at: new Date().toISOString()
     };
@@ -299,9 +348,8 @@ async function startServer() {
 
     if (supabase) {
       try {
-        // We match table column styles. Ensure to omit fields if database UUID generation handles it,
-        // or write plain text ID.
-        const { error } = await supabase.from("penerima_blt").insert([item]);
+        const mapped = mapPenerimaToSupabase(item);
+        const { error } = await supabase.from("penerima_blt").insert([mapped]);
         if (!error) {
           return res.status(201).json(item);
         }
@@ -332,11 +380,11 @@ async function startServer() {
 
     if (supabase) {
       try {
-        // Try update in Supabase (check id matching)
+        const uuidId = toDeterministicUuid(id);
         const { error } = await supabase
           .from("penerima_blt")
           .update(body)
-          .or(`id.eq.${id},nik.eq.${id}`);
+          .or(`id.eq.${uuidId},nik.eq.${id}`);
 
         if (!error) {
           return res.json(updatedItem || body);
@@ -365,10 +413,11 @@ async function startServer() {
 
     if (supabase) {
       try {
+        const uuidId = toDeterministicUuid(id);
         const { error } = await supabase
           .from("penerima_blt")
           .delete()
-          .or(`id.eq.${id},nik.eq.${id}`);
+          .or(`id.eq.${uuidId},nik.eq.${id}`);
 
         if (!error) {
           return res.json({ success: true });
@@ -391,9 +440,10 @@ async function startServer() {
   // Add Penyaluran
   app.post("/api/penyaluran", async (req, res) => {
     const payload = req.body;
+    const generatedId = crypto.randomUUID();
     const item: PenyaluranBlt = {
       ...payload,
-      id: "s_" + Date.now() + Math.random().toString(36).substring(2, 6),
+      id: generatedId,
       status: "Sudah Disalurkan",
       created_at: new Date().toISOString()
     };
@@ -409,15 +459,17 @@ async function startServer() {
 
     if (supabase) {
       try {
+        const mapped = mapPenyaluranToSupabase(item);
         // Step 1: Insert Penyaluran record
-        const { error: errorPen } = await supabase.from("penyaluran_blt").insert([item]);
+        const { error: errorPen } = await supabase.from("penyaluran_blt").insert([mapped]);
         
         if (!errorPen) {
           // Step 2: Update Penerima status in Supabase
+          const uuidPenerimaId = toDeterministicUuid(payload.penerima_id);
           await supabase
             .from("penerima_blt")
             .update({ status: "Sudah Disalurkan" })
-            .or(`id.eq.${payload.penerima_id},nik.eq.${payload.nik}`);
+            .or(`id.eq.${uuidPenerimaId},nik.eq.${payload.nik}`);
 
           return res.status(201).json(item);
         }
@@ -442,9 +494,15 @@ async function startServer() {
           await supabase.from("penyaluran_blt").delete().neq("id", "00000000-0000-0000-0000-000000000000");
           await supabase.from("penerima_blt").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
-          // Insert new batches
-          if (penerima.length > 0) await supabase.from("penerima_blt").insert(penerima);
-          if (penyaluran.length > 0) await supabase.from("penyaluran_blt").insert(penyaluran);
+          // Insert new batches map as deterministic UUIDs to avoid any postgres syntax cast errors!
+          if (penerima.length > 0) {
+            const mappedPenerima = penerima.map(mapPenerimaToSupabase);
+            await supabase.from("penerima_blt").insert(mappedPenerima);
+          }
+          if (penyaluran.length > 0) {
+            const mappedPenyaluran = penyaluran.map(mapPenyaluranToSupabase);
+            await supabase.from("penyaluran_blt").insert(mappedPenyaluran);
+          }
         } catch (err) {
           console.warn("[WARN] Failed syncing import batch to Supabase:", err);
         }
@@ -466,8 +524,10 @@ async function startServer() {
         await supabase.from("penyaluran_blt").delete().neq("id", "00000000-0000-0000-0000-000000000000");
         await supabase.from("penerima_blt").delete().neq("id", "00000000-0000-0000-0000-000000000000");
         
-        await supabase.from("penerima_blt").insert(SEED_PENERIMA);
-        await supabase.from("penyaluran_blt").insert(SEED_PENYALURAN);
+        const mappedPenerima = SEED_PENERIMA.map(mapPenerimaToSupabase);
+        const mappedPenyaluran = SEED_PENYALURAN.map(mapPenyaluranToSupabase);
+        await supabase.from("penerima_blt").insert(mappedPenerima);
+        await supabase.from("penyaluran_blt").insert(mappedPenyaluran);
       } catch (err) {
         console.warn("[WARN] Gagal melalukan factory reset Supabase:", err);
       }
