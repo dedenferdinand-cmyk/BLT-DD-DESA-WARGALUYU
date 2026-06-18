@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { PenerimaBlt, PenyaluranBlt } from '../types';
-import { QrCode, Camera, FileImage, CheckCircle, AlertTriangle, User, Smile, MapPin, Check, RefreshCw } from 'lucide-react';
+import { QrCode, Camera, FileImage, CheckCircle, AlertTriangle, User, Smile, MapPin, Check, RefreshCw, SwitchCamera } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ScanningPanelProps {
@@ -26,6 +26,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
   const [fotoPenerima, setFotoPenerima] = useState<string | null>(null);
   const [isCapturingKtp, setIsCapturingKtp] = useState(false);
   const [isCapturingPenerima, setIsCapturingPenerima] = useState(false);
+  const [activeFacingMode, setActiveFacingMode] = useState<'environment' | 'user'>('environment');
 
   // Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,7 +120,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
   // ==========================================================
   // DIRECT WEBCAM SNAPSHOT MODULE
   // ==========================================================
-  const startWebcam = async (forKtp: boolean) => {
+  const startWebcam = async (forKtp: boolean, customFacingMode?: 'environment' | 'user') => {
     stopWebcam(); // clear existing
     if (forKtp) {
       setIsCapturingKtp(true);
@@ -129,10 +130,15 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
       setIsCapturingKtp(false);
     }
 
+    const mode = customFacingMode || activeFacingMode;
+    if (customFacingMode) {
+      setActiveFacingMode(customFacingMode);
+    }
+
     setTimeout(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: forKtp ? "environment" : "user" },
+          video: { facingMode: { ideal: mode } },
           audio: false
         });
         streamRef.current = stream;
@@ -145,6 +151,12 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
         // We will show a file upload option as primary fallback if real stream fails
       }
     }, 100);
+  };
+
+  const toggleCameraFacingMode = async () => {
+    const isKtp = isCapturingKtp;
+    const nextMode = activeFacingMode === 'environment' ? 'user' : 'environment';
+    await startWebcam(isKtp, nextMode);
   };
 
   const stopWebcam = () => {
@@ -502,7 +514,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
                             </label>
                             <button
                               type="button"
-                              onClick={() => startWebcam(true)}
+                              onClick={() => startWebcam(true, 'environment')}
                               className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-emerald-200/50 dark:border-emerald-900/40"
                             >
                               Kamera HP
@@ -544,7 +556,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
                             </label>
                             <button
                               type="button"
-                              onClick={() => startWebcam(false)}
+                              onClick={() => startWebcam(false, 'environment')}
                               className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-emerald-200/50 dark:border-emerald-900/40"
                             >
                               Kamera HP
@@ -559,15 +571,27 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
                   {(isCapturingKtp || isCapturingPenerima) && (
                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 text-center">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Kamera Aktif: {isCapturingKtp ? "Ambil Foto KTP" : "Ambil Foto Penyerahan"}
+                        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-555 animate-pulse inline-block"></span>
+                          {isCapturingKtp ? "Foto KTP" : "Foto Penyerahan"} ({activeFacingMode === 'environment' ? 'Kamera Belakang' : 'Kamera Depan'})
                         </span>
-                        <button 
-                          onClick={stopWebcam} 
-                          className="text-xs text-red-500 font-bold uppercase hover:text-red-400 transition-colors"
-                        >
-                          Tutup
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            type="button"
+                            onClick={toggleCameraFacingMode}
+                            className="text-xs text-emerald-400 hover:text-emerald-300 font-bold uppercase transition-colors flex items-center gap-1"
+                            title="Balik Kamera Depan / Belakang"
+                          >
+                            <SwitchCamera className="w-3.5 h-3.5" /> Balik
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={stopWebcam} 
+                            className="text-xs text-red-500 font-bold uppercase hover:text-red-400 transition-colors"
+                          >
+                            Tutup
+                          </button>
+                        </div>
                       </div>
 
                       {/* Video capture wrapper box */}
