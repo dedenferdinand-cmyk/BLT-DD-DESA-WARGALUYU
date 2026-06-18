@@ -257,13 +257,46 @@ class SandboxDatabase {
   }
 }
 
+// Helper UUID generators and sanitizers for Postgres Compatibility
+const isUuid = (str: string) => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+};
+
+const generateUuid = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+const toDeterministicUuid = (str: string) => {
+  if (!str) return '00000000-0000-0000-0000-000000000000';
+  if (isUuid(str)) return str.toLowerCase();
+  
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0') + 'abcdefabcdefabcdefabcdef'.slice(0, 24);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    '4' + hex.slice(13, 16),
+    '8' + hex.slice(17, 20),
+    hex.slice(20, 32)
+  ].join('-');
+};
+
 export const sandboxDb = new SandboxDatabase();
 
 // ==========================================================
 // UNIFIED DATA SERVICE (AUTO SWITCH SUPABASE VS SANDBOX)
 // ==========================================================
 export const DataService = {
-  isUsingSupabase: () => false, // We prioritize our centralized fast-sync Express sever!
+  isUsingSupabase: () => isSupabaseConfigured(),
 
   getPenerima: async (): Promise<PenerimaBlt[]> => {
     try {
@@ -272,12 +305,36 @@ export const DataService = {
         return await res.json() as PenerimaBlt[];
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('penerima_blt')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          return data as PenerimaBlt[];
+        }
+        console.warn('Supabase direct query failed:', error);
+      } catch (e) {
+        console.warn('Supabase raw query exception:', e);
+      }
+    }
+
     return sandboxDb.getPenerimaList();
   },
 
   addPenerima: async (item: Omit<PenerimaBlt, 'id' | 'status'>): Promise<PenerimaBlt> => {
+    const generatedId = generateUuid();
+    const newItem: PenerimaBlt = {
+      ...item,
+      id: generatedId,
+      status: 'Belum Disalurkan',
+      created_at: new Date().toISOString()
+    };
+
     try {
       const res = await fetch('/api/penerima', {
         method: 'POST',
@@ -288,8 +345,25 @@ export const DataService = {
         return await res.json() as PenerimaBlt;
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const mapped = {
+          ...newItem,
+          id: toDeterministicUuid(newItem.id)
+        };
+        const { error } = await supabase.from('penerima_blt').insert([mapped]);
+        if (!error) {
+          return newItem;
+        }
+        console.warn('Supabase direct insert failed:', error);
+      } catch (e) {
+        console.warn('Supabase raw insert exception:', e);
+      }
+    }
+
     const fallbackPayload = {
       ...item,
       status: 'Belum Disalurkan' as const
@@ -308,8 +382,25 @@ export const DataService = {
         return await res.json() as PenerimaBlt;
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const uId = toDeterministicUuid(id);
+        const { error } = await supabase
+          .from('penerima_blt')
+          .update(updates)
+          .or(`id.eq.${uId},nik.eq.${id}`);
+        if (!error) {
+          return { ...updates, id } as any;
+        }
+        console.warn('Supabase direct update failed:', error);
+      } catch (e) {
+        console.warn('Supabase raw update exception:', e);
+      }
+    }
+
     return sandboxDb.updatePenerima(id, updates);
   },
 
@@ -322,8 +413,25 @@ export const DataService = {
         return true;
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const uId = toDeterministicUuid(id);
+        const { error } = await supabase
+          .from('penerima_blt')
+          .delete()
+          .or(`id.eq.${uId},nik.eq.${id}`);
+        if (!error) {
+          return true;
+        }
+        console.warn('Supabase direct delete failed:', error);
+      } catch (e) {
+        console.warn('Supabase raw delete exception:', e);
+      }
+    }
+
     return sandboxDb.deletePenerima(id);
   },
 
@@ -334,12 +442,36 @@ export const DataService = {
         return await res.json() as PenyaluranBlt[];
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('penyaluran_blt')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          return data as PenyaluranBlt[];
+        }
+        console.warn('Supabase direct history failed:', error);
+      } catch (e) {
+        console.warn('Supabase history query exception:', e);
+      }
+    }
+
     return sandboxDb.getPenyaluranList();
   },
 
   addPenyaluran: async (item: Omit<PenyaluranBlt, 'id' | 'status'>): Promise<PenyaluranBlt> => {
+    const generatedId = generateUuid();
+    const newItem: PenyaluranBlt = {
+      ...item,
+      id: generatedId,
+      status: 'Sudah Disalurkan',
+      created_at: new Date().toISOString()
+    };
+
     try {
       const res = await fetch('/api/penyaluran', {
         method: 'POST',
@@ -350,8 +482,31 @@ export const DataService = {
         return await res.json() as PenyaluranBlt;
       }
     } catch (err) {
-      console.warn('API error, falling back to Sandbox:', err);
+      console.warn('API error, falling back to direct Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        const mapped = {
+          ...newItem,
+          id: toDeterministicUuid(newItem.id),
+          penerima_id: toDeterministicUuid(newItem.penerima_id)
+        };
+        const { error: err1 } = await supabase.from('penyaluran_blt').insert([mapped]);
+        if (!err1) {
+          const pUuid = toDeterministicUuid(newItem.penerima_id);
+          await supabase
+            .from('penerima_blt')
+            .update({ status: 'Sudah Disalurkan' })
+            .or(`id.eq.${pUuid},nik.eq.${newItem.nik}`);
+          return newItem;
+        }
+        console.warn('Supabase direct penyaluran failed:', err1);
+      } catch (e) {
+        console.warn('Supabase raw penyaluran exception:', e);
+      }
+    }
+
     const fallbackPayload = {
       ...item,
       status: 'Sudah Disalurkan' as const
@@ -374,8 +529,36 @@ export const DataService = {
       });
       if (res.ok) return;
     } catch (err) {
-      console.warn('API error, restoring to Sandbox:', err);
+      console.warn('API error, restoring to Supabase:', err);
     }
+
+    if (supabase) {
+      try {
+        await supabase.from('penyaluran_blt').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('penerima_blt').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (penerima.length > 0) {
+          const mappedPenerima = penerima.map(p => ({
+            ...p,
+            id: toDeterministicUuid(p.id)
+          }));
+          await supabase.from('penerima_blt').insert(mappedPenerima);
+        }
+
+        if (penyaluran.length > 0) {
+          const mappedPenyaluran = penyaluran.map(s => ({
+            ...s,
+            id: toDeterministicUuid(s.id),
+            penerima_id: toDeterministicUuid(s.penerima_id)
+          }));
+          await supabase.from('penyaluran_blt').insert(mappedPenyaluran);
+        }
+        return;
+      } catch (e) {
+        console.warn('Direct Supabase restore exception:', e);
+      }
+    }
+
     sandboxDb.importBackup(penerima, penyaluran);
   },
 
@@ -388,6 +571,32 @@ export const DataService = {
     } catch (err) {
       console.warn('API error, resetting Sandbox:', err);
     }
+
+    if (supabase) {
+      try {
+        await supabase.from('penyaluran_blt').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('penerima_blt').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        const initialPenerima = [
+          { id: 'p1', nik: '3205011212890001', no_kk: '3205012503140003', nama: 'Ahmad Dahlan', jenis_kelamin: 'Laki-laki', alamat: 'Jl. Wargaluyu Indah No. 42', rt: '001', rw: '003', nominal: 300000, tahun: '2026', tahap: 'Tahap 1', status: 'Belum Disalurkan' },
+          { id: 'p2', nik: '3205015505920005', no_kk: '3205012503140011', nama: 'Siti Rahmaawati', jenis_kelamin: 'Perempuan', alamat: 'Kampung Siliwangi Rt 02', rt: '002', rw: '003', nominal: 300000, tahun: '2026', tahap: 'Tahap 1', status: 'Sudah Disalurkan' },
+          { id: 'p3', nik: '3205011708780002', no_kk: '3205012211150009', nama: 'Budi Santoso', jenis_kelamin: 'Laki-laki', alamat: 'Dusun Caringin Kulon', rt: '003', rw: '004', nominal: 300000, tahun: '2026', tahap: 'Tahap 1', status: 'Belum Disalurkan' },
+          { id: 'p4', nik: '3205014309850004', no_kk: '3205012211150015', nama: 'Dewi Lestari', jenis_kelamin: 'Perempuan', alamat: 'Kampung Sukasari RT 01', rt: '001', rw: '004', nominal: 300000, tahun: '2026', tahap: 'Tahap 1', status: 'Belum Disalurkan' }
+        ].map(p => ({ ...p, id: toDeterministicUuid(p.id) }));
+
+        await supabase.from('penerima_blt').insert(initialPenerima);
+
+        const initialPenyaluran = [
+          { id: 's1', penerima_id: 'p2', nik: '3205015505920005', nama: 'Siti Rahmaawati', alamat: 'Kampung Siliwangi Rt 02', rt: '002', rw: '003', nominal: 300000, tanggal: '2026-06-15', jam: '09:45:00', petugas: 'Admin Kantor Desa', status: 'Sudah Disalurkan' }
+        ].map(s => ({ ...s, id: toDeterministicUuid(s.id), penerima_id: toDeterministicUuid(s.penerima_id) }));
+
+        await supabase.from('penyaluran_blt').insert(initialPenyaluran);
+        return;
+      } catch (e) {
+        console.warn('Direct Supabase reset exception:', e);
+      }
+    }
+
     sandboxDb.resetAll();
   }
 };
