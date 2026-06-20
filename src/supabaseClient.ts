@@ -62,8 +62,12 @@ CREATE TABLE IF NOT EXISTS public.penyaluran_blt (
     foto_ktp TEXT, -- Berisi base64 atau URL storage
     foto_penerima TEXT, -- Berisi base64 atau URL storage
     status VARCHAR(20) DEFAULT 'Sudah Disalurkan' CHECK (status IN ('Sudah Disalurkan')),
+    periode VARCHAR(50) DEFAULT 'Januari - Februari - Maret 2026',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Upgrade script if table already existed (to add missing columns)
+ALTER TABLE public.penyaluran_blt ADD COLUMN IF NOT EXISTS periode VARCHAR(50) DEFAULT 'Januari - Februari - Maret 2026';
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.penerima_blt ENABLE ROW LEVEL SECURITY;

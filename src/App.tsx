@@ -246,10 +246,13 @@ export default function App() {
   };
 
   const handleDistributeBLT = async (payload: Omit<PenyaluranBlt, 'id' | 'status'>) => {
-    // Audit check preventing duplicate
-    const checkDup = penyaluran.some(p => p.nik === payload.nik);
+    // Audit check preventing duplicate for the same period
+    const checkDup = penyaluran.some(
+      p => p.nik === payload.nik && 
+      (p.periode || 'Januari - Februari - Maret 2026') === (payload.periode || 'Januari - Februari - Maret 2026')
+    );
     if (checkDup) {
-      throw new Error('Penerima sudah terekam menerima dana BLT periode ini!');
+      throw new Error(`Penerima sudah terekam menerima dana BLT untuk periode ${payload.periode || 'Januari - Februari - Maret 2026'}!`);
     }
 
     // Photo uploads handling
@@ -698,6 +701,7 @@ export default function App() {
                 {activeTab === 'scan-qr' && (
                   <ScanningPanel 
                     penerima={penerima} 
+                    penyaluran={penyaluran}
                     currentUser={currentUser} 
                     onSalurkan={handleDistributeBLT} 
                   />
@@ -706,6 +710,7 @@ export default function App() {
                 {activeTab === 'manual-search' && (
                   <ManualSearch 
                     penerima={penerima} 
+                    penyaluran={penyaluran}
                     currentUser={currentUser} 
                     onSalurkan={handleDistributeBLT} 
                   />

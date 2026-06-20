@@ -6,12 +6,13 @@ import confetti from 'canvas-confetti';
 
 interface ScanningPanelProps {
   penerima: PenerimaBlt[];
+  penyaluran?: PenyaluranBlt[];
   currentUser: { nama: string };
   onSalurkan: (data: Omit<PenyaluranBlt, 'id' | 'status'>) => Promise<void>;
   onManualNikScan?: (nik: string) => void;
 }
 
-export default function ScanningPanel({ penerima, currentUser, onSalurkan }: ScanningPanelProps) {
+export default function ScanningPanel({ penerima, penyaluran = [], currentUser, onSalurkan }: ScanningPanelProps) {
   // Scanner state
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [matchedKpm, setMatchedKpm] = useState<PenerimaBlt | null>(null);
@@ -27,6 +28,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
   const [isCapturingKtp, setIsCapturingKtp] = useState(false);
   const [isCapturingPenerima, setIsCapturingPenerima] = useState(false);
   const [activeFacingMode, setActiveFacingMode] = useState<'environment' | 'user'>('environment');
+  const [periodePembayaran, setPeriodePembayaran] = useState('Januari - Februari - Maret 2026');
 
   // Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,6 +42,13 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
   // Scanner container ID
   const scannerId = "qrcode-reader-element";
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
+
+  const existingDisbursement = matchedKpm
+    ? (penyaluran || []).find(
+        (p) => p.nik === matchedKpm.nik && (p.periode || 'Januari - Februari - Maret 2026') === periodePembayaran
+      )
+    : null;
+  const isSudahDisalurkan = !!existingDisbursement;
 
   // Effect to handle matched KPM lookup when scanResult updates
   useEffect(() => {
@@ -263,8 +272,12 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
   // EXECUTE DISBURSEMENT TO SUPABASE
   const handleProcessDisbursement = async () => {
     if (!matchedKpm) return;
-    if (matchedKpm.status === 'Sudah Disalurkan') {
-      alert('KPM ini sudah mendapatkan bantuan BLT sebelumnya. Penyaluran dibatalkan.');
+    const existingDisbursement = (penyaluran || []).find(
+      p => p.nik === matchedKpm.nik && 
+      (p.periode || 'Januari - Februari - Maret 2026') === periodePembayaran
+    );
+    if (existingDisbursement) {
+      alert(`KPM ini sudah mendapatkan bantuan BLT untuk periode ${periodePembayaran} sebelumnya. Penyaluran dibatalkan.`);
       return;
     }
     if (!fotoKtp) {
@@ -294,6 +307,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
       petugas: currentUser.nama,
       foto_ktp: fotoKtp, // Real base64 string
       foto_penerima: fotoPenerima,
+      periode: periodePembayaran,
     };
 
     try {
@@ -458,24 +472,39 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
                 </div>
               </div>
 
+              {/* Period selection dropdown - ALWAYS exposed to allow switching periods easily */}
+              <div className="bg-amber-50/50 dark:bg-amber-955/10 text-amber-900 dark:text-amber-400 p-4 rounded-xl border border-amber-200/60 dark:border-amber-900/40 space-y-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">Pilih Periode Pembayaran BLT DD:</label>
+                <select
+                  value={periodePembayaran}
+                  onChange={(e) => setPeriodePembayaran(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-950 dark:text-slate-100 border border-slate-300 dark:border-slate-800 focus:border-amber-500 focus:outline-none rounded-lg px-3 py-2 text-xs font-bold"
+                >
+                  <option value="Januari - Februari - Maret 2026">Januari - Februari - Maret 2026</option>
+                  <option value="April - Mei - Juni 2026">April - Mei - Juni 2026</option>
+                </select>
+              </div>
+
               {/* Status constraints badge and check */}
-              {matchedKpm.status === 'Sudah Disalurkan' ? (
+              {isSudahDisalurkan ? (
                 <div className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 p-4 rounded-xl border border-red-200 dark:border-red-900/50 flex flex-col sm:flex-row items-center gap-3">
                   <span className="text-2xl">⚠️</span>
                   <div className="text-center sm:text-left">
-                    <h4 className="font-bold text-xs uppercase tracking-wider">BLT Sudah Disalurkan</h4>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">Kepala keluarga ({matchedKpm.nama}) telah menerima dana BLT senilai IDR {matchedKpm.nominal.toLocaleString('id-ID')} sebelumnya. Tombol penyaluran dikunci otomatis untuk mencegah double disbursement.</p>
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-red-800 dark:text-red-400">BLT Sudah Disalurkan</h4>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                      Kepala keluarga (<strong>{matchedKpm.nama}</strong>) telah menerima dana BLT senilai <strong>IDR {matchedKpm.nominal.toLocaleString('id-ID')}</strong> untuk periode <strong>{periodePembayaran}</strong>. Ditransaksikan pada {existingDisbursement.tanggal} pukul {existingDisbursement.jam} oleh petugas {existingDisbursement.petugas}.
+                    </p>
                   </div>
                 </div>
               ) : (
                 <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 p-3 rounded-xl border border-emerald-200 dark:border-emerald-905 flex items-center gap-2 text-xs">
                   <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <p><b>KPM Terverifikasi Valid!</b> KPM tercatat mengantri menyalurkan dana bantuan periode ini.</p>
+                  <p><b>KPM Terverifikasi Valid!</b> KPM tercatat mengantri menyalurkan dana bantuan untuk periode <strong>{periodePembayaran}</strong> ini.</p>
                 </div>
               )}
 
               {/* Real camera snapshots snapshot grid (ONLY active when status = Belum Disalurkan) */}
-              {matchedKpm.status !== 'Sudah Disalurkan' && (
+              {!isSudahDisalurkan && (
                 <div className="space-y-4">
                   <h4 className="text-[11px] font-bold text-slate-550 dark:text-slate-400 uppercase tracking-widest pb-1 border-b border-slate-100 dark:border-slate-850">Lampiran Audit Lapangan (Wajib)</h4>
                   
@@ -643,7 +672,7 @@ export default function ScanningPanel({ penerima, currentUser, onSalurkan }: Sca
                   <RefreshCw className="w-4 h-4" />
                 </button>
 
-                {matchedKpm.status === 'Sudah Disalurkan' ? (
+                {isSudahDisalurkan ? (
                   <button
                     disabled
                     type="button"

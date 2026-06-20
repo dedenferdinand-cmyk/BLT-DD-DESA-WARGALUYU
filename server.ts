@@ -49,6 +49,7 @@ interface PenyaluranBlt {
   foto_penerima: string; // base64 or storage URL
   status: 'Sudah Disalurkan';
   created_at?: string;
+  periode?: string;
 }
 
 const DB_FILE = path.join(process.cwd(), "database.json");
@@ -191,6 +192,22 @@ function mapPenyaluranToSupabase(s: PenyaluranBlt): any {
   };
 }
 
+async function safeInsertPenyaluran(payload: any | any[]) {
+  if (!supabase) return { error: new Error("Supabase client is not configured") };
+  
+  const isArray = Array.isArray(payload);
+  const rows = isArray ? payload : [payload];
+
+  let { error } = await supabase.from("penyaluran_blt").insert(rows);
+  if (error && error.message && (error.message.includes("periode") || error.message.includes("schema cache"))) {
+    console.warn("[WARN] Supabase table lacks 'periode' column in schema cache. Retrying insert without 'periode'...");
+    const rowsWithoutPeriode = rows.map(({ periode, ...rest }) => rest);
+    let retryResult = await supabase.from("penyaluran_blt").insert(rowsWithoutPeriode);
+    return retryResult;
+  }
+  return { error };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -232,7 +249,7 @@ async function startServer() {
             const seedPenyaluranList = activeLocal.penyaluran && activeLocal.penyaluran.length > 0 ? activeLocal.penyaluran : SEED_PENYALURAN;
             if (seedPenyaluranList.length > 0) {
               const mappedPenSeeds = seedPenyaluranList.map(mapPenyaluranToSupabase);
-              await supabase.from("penyaluran_blt").insert(mappedPenSeeds);
+              await safeInsertPenyaluran(mappedPenSeeds);
               console.log("[SYS] Migrasi otomatis data riwayat penyaluran ke Supabase sukses!");
             }
             
@@ -269,7 +286,7 @@ async function startServer() {
         if (data && data.length === 0 && SEED_PENYALURAN.length > 0) {
           console.log("[SYS] Supabase menyemai data penyaluran awal secara otomatis...");
           const mappedSeeds = SEED_PENYALURAN.map(mapPenyaluranToSupabase);
-          await supabase.from("penyaluran_blt").insert(mappedSeeds);
+          await safeInsertPenyaluran(mappedSeeds);
           const { data: seededData } = await supabase.from("penyaluran_blt").select("*").order("created_at", { ascending: false });
           if (seededData) return seededData as PenyaluranBlt[];
         }
@@ -461,7 +478,7 @@ async function startServer() {
       try {
         const mapped = mapPenyaluranToSupabase(item);
         // Step 1: Insert Penyaluran record
-        const { error: errorPen } = await supabase.from("penyaluran_blt").insert([mapped]);
+        const { error: errorPen } = await safeInsertPenyaluran(mapped);
         
         if (!errorPen) {
           // Step 2: Update Penerima status in Supabase
@@ -501,7 +518,7 @@ async function startServer() {
           }
           if (penyaluran.length > 0) {
             const mappedPenyaluran = penyaluran.map(mapPenyaluranToSupabase);
-            await supabase.from("penyaluran_blt").insert(mappedPenyaluran);
+            await safeInsertPenyaluran(mappedPenyaluran);
           }
         } catch (err) {
           console.warn("[WARN] Failed syncing import batch to Supabase:", err);
@@ -527,7 +544,7 @@ async function startServer() {
         const mappedPenerima = SEED_PENERIMA.map(mapPenerimaToSupabase);
         const mappedPenyaluran = SEED_PENYALURAN.map(mapPenyaluranToSupabase);
         await supabase.from("penerima_blt").insert(mappedPenerima);
-        await supabase.from("penyaluran_blt").insert(mappedPenyaluran);
+        await safeInsertPenyaluran(mappedPenyaluran);
       } catch (err) {
         console.warn("[WARN] Gagal melalukan factory reset Supabase:", err);
       }

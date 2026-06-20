@@ -31,6 +31,7 @@ export interface PenyaluranBlt {
   foto_penerima: string; // base64 or storage URL
   status: 'Sudah Disalurkan';
   created_at?: string;
+  periode?: string;
 }
 
 export type UserRole = 'Admin' | 'Petugas';

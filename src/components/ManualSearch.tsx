@@ -5,11 +5,12 @@ import ScanningPanel from './ScanningPanel';
 
 interface ManualSearchProps {
   penerima: PenerimaBlt[];
+  penyaluran?: PenyaluranBlt[];
   currentUser: { nama: string };
   onSalurkan: (data: Omit<PenyaluranBlt, 'id' | 'status'>) => Promise<void>;
 }
 
-export default function ManualSearch({ penerima, currentUser, onSalurkan }: ManualSearchProps) {
+export default function ManualSearch({ penerima, penyaluran = [], currentUser, onSalurkan }: ManualSearchProps) {
   const [searchWord, setSearchWord] = useState('');
   const [filterRt, setFilterRt] = useState('');
   const [filterRw, setFilterRw] = useState('');
@@ -115,6 +116,7 @@ export default function ManualSearch({ penerima, currentUser, onSalurkan }: Manu
           {selectedKpm ? (
             <ScanningPanel 
               penerima={[selectedKpm]} 
+              penyaluran={penyaluran}
               currentUser={currentUser} 
               onSalurkan={async (data) => {
                 await onSalurkan(data);

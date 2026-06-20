@@ -18,131 +18,39 @@ const formatDateIndo = (dateStr: string) => {
   }
 };
 
-// Generates a single F4 page for a given Penyaluran item
-const generatePDFPage = (doc: jsPDF, item: PenyaluranBlt, penerima: PenerimaBlt[], pageNum?: number, totalPages?: number) => {
+// Generates Kop Surat & Header for a page
+const generateKopAndHeader = (doc: jsPDF, pageNum?: number, totalPages?: number, periode?: string) => {
   const marginX = 15;
   const widthTotal = 215; // F4 Width in mm
-  const widthPrintable = widthTotal - (marginX * 2); // 185mm
 
   // 1. KOP SURAT (Pemerintah Desa)
   doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text('PEMERINTAH KABUPATEN BANDUNG', widthTotal / 2, 18, { align: 'center' });
-
   doc.setFontSize(13);
-  doc.text('KECAMATAN ARJASARI', widthTotal / 2, 24, { align: 'center' });
+  doc.text('PEMERINTAH KABUPATEN BANDUNG', widthTotal / 2, 16, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.text('KECAMATAN ARJASARI', widthTotal / 2, 22, { align: 'center' });
 
   doc.setFontSize(15);
-  doc.text('PEMERINTAH DESA WARGALUYU', widthTotal / 2, 31, { align: 'center' });
+  doc.text('DESA WARGALUYU', widthTotal / 2, 29, { align: 'center' });
 
   doc.setFont('Helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('Alamat: Jalan Desa Wargaluyu, Kecamatan Arjasari, Kabupaten Bandung, Jawa Barat', widthTotal / 2, 37, { align: 'center' });
+  doc.setFontSize(8.5);
+  doc.text('Alamat: Jl. M.Adhikarta No. 86 Email: Wargaluyu@bandungkab.go.id Kodepos 40379', widthTotal / 2, 35, { align: 'center' });
 
   // Double horizontal header lines
   doc.setLineWidth(0.8);
-  doc.line(marginX, 41, widthTotal - marginX, 41);
+  doc.line(marginX, 38, widthTotal - marginX, 38);
   doc.setLineWidth(0.2);
-  doc.line(marginX, 42.2, widthTotal - marginX, 42.2);
+  doc.line(marginX, 39.2, widthTotal - marginX, 39.2);
 
   // Document Title
   doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('LEMBAR SELEKSI & DOKUMENTASI PENERIMA MANFAAT', widthTotal / 2, 51, { align: 'center' });
-
-  // 2. Data Penerima Border Box
-  const dataYStart = 58;
-  doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('I. IDENTITAS PENERIMA MANFAAT', marginX, dataYStart);
-
-  doc.setLineWidth(0.3);
-  doc.setDrawColor(120, 120, 120);
-  doc.rect(marginX, dataYStart + 3, widthPrintable, 22);
-
-  // Rows of data (ONLY NIK and NAMA as requested!)
-  doc.setFontSize(9.5);
+  doc.setFontSize(11);
+  doc.text('PENERIMA MANFAAT BLT DD', widthTotal / 2, 45, { align: 'center' });
   
-  // Row 1: Nama
-  doc.setFont('Helvetica', 'bold');
-  doc.text('NAMA LENGKAP', marginX + 6, dataYStart + 11);
-  doc.text(':', marginX + 46, dataYStart + 11);
-  doc.setFont('Helvetica', 'normal');
-  doc.text(item.nama.toUpperCase(), marginX + 50, dataYStart + 11);
-
-  // Row 2: NIK
-  doc.setFont('Helvetica', 'bold');
-  doc.text('NIK (NO. KTP)', marginX + 6, dataYStart + 18);
-  doc.text(':', marginX + 46, dataYStart + 18);
-  doc.setFont('Helvetica', 'normal');
-  doc.text(item.nik, marginX + 50, dataYStart + 18);
-
-  // 3. Documentation Section (Photos Stacked / Side-by-side)
-  const docYStart = 94;
-  doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('II. DOKUMENTASI BUKTI FISIK', marginX, docYStart);
-
-  const boxWidth = 88;
-  const boxHeight = 105;
-  const gap = widthPrintable - (boxWidth * 2); // 9mm
-
-  // Box positions
-  const leftBoxX = marginX;
-  const rightBoxX = marginX + boxWidth + gap;
-  const boxY = docYStart + 8;
-
-  // Let's print Labels above the boxes
-  doc.setFontSize(9);
-  doc.setFont('Helvetica', 'bold');
-  doc.text('FOTO KARTU TANDA PENDUDUK (KTP)', leftBoxX + (boxWidth / 2), boxY - 3, { align: 'center' });
-  doc.text('FOTO PENERIMA MANFAAT', rightBoxX + (boxWidth / 2), boxY - 3, { align: 'center' });
-
-  // Draw photo frames
-  doc.setDrawColor(150, 150, 150);
-  doc.setLineWidth(0.25);
-  doc.rect(leftBoxX, boxY, boxWidth, boxHeight);
-  doc.rect(rightBoxX, boxY, boxWidth, boxHeight);
-
-  // Center placeholders if image is missing, or draw image inside
-  // Left Box: Foto KTP
-  if (item.foto_ktp) {
-    try {
-      doc.addImage(item.foto_ktp, 'JPEG', leftBoxX + 1.5, boxY + 1.5, boxWidth - 3, boxHeight - 3);
-    } catch (e) {
-      console.warn('Failed embedding Foto KTP in PDF:', e);
-      doc.setFont('Helvetica', 'italic');
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('(Format foto tidak kompatibel)', leftBoxX + (boxWidth / 2), boxY + (boxHeight / 2), { align: 'center' });
-    }
-  } else {
-    doc.setFont('Helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(155, 155, 155);
-    doc.text('[Tidak Ada Dokumentasi KTP]', leftBoxX + (boxWidth / 2), boxY + (boxHeight / 2), { align: 'center' });
-  }
-
-  // Right Box: Foto Penerima
-  if (item.foto_penerima) {
-    try {
-      doc.addImage(item.foto_penerima, 'JPEG', rightBoxX + 1.5, boxY + 1.5, boxWidth - 3, boxHeight - 3);
-    } catch (e) {
-      console.warn('Failed embedding Foto Penerima in PDF:', e);
-      doc.setFont('Helvetica', 'italic');
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('(Format foto tidak kompatibel)', rightBoxX + (boxWidth / 2), boxY + (boxHeight / 2), { align: 'center' });
-    }
-  } else {
-    doc.setFont('Helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(155, 155, 155);
-    doc.text('[Tidak Ada Dokumentasi Penerima]', rightBoxX + (boxWidth / 2), boxY + (boxHeight / 2), { align: 'center' });
-  }
-
-  // Reset text color for subsequent sections
-  doc.setTextColor(0, 0, 0);
+  const displayPeriod = periode || 'Januari - Februari - Maret 2026';
+  doc.text(displayPeriod.toUpperCase(), widthTotal / 2, 50, { align: 'center' });
 
   // Footer page label
   doc.setFont('Helvetica', 'normal');
@@ -157,6 +65,102 @@ const generatePDFPage = (doc: jsPDF, item: PenyaluranBlt, penerima: PenerimaBlt[
   doc.setTextColor(0, 0, 0); // reset
 };
 
+// Draws a compact KPM row/card block inside F4 page
+const drawKpmBlock = (doc: jsPDF, item: PenyaluranBlt, yOffset: number) => {
+  const marginX = 15;
+  const widthTotal = 215;
+  const widthPrintable = widthTotal - (marginX * 2); // 185mm
+
+  // Outer container box with soft light fill
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.25);
+  doc.setFillColor(252, 252, 252);
+  doc.rect(marginX, yOffset, widthPrintable, 46, 'DF');
+
+  // Text details on the left (Nama & NIK)
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text('NAMA PENERIMA:', marginX + 4, yOffset + 6);
+
+  // Client name
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(15, 23, 42); // slate-900 color
+  const nameChunks = doc.splitTextToSize(item.nama.toUpperCase(), 50);
+  doc.text(nameChunks, marginX + 4, yOffset + 12);
+
+  // Client NIK
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text('NIK / NO. KTP:', marginX + 4, yOffset + 30);
+  
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text(item.nik, marginX + 4, yOffset + 36);
+
+  // Reset text color for general
+  doc.setTextColor(0, 0, 0);
+
+  // Photo dimensions & positions
+  const ktpX = marginX + 58;
+  const colWidthKtp = 56; // Standard aspect ratio (~1.58 ratio)
+  const colHeightKtp = 34.8;
+
+  const penerimaX = marginX + 118;
+  const colWidthPenerima = 47; // standard vertical portrait or slightly square representation
+  const colHeightPenerima = 34.8; // Align tops and bases perfectly
+
+  // Tiny top labels
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(110, 110, 110);
+  doc.text('FOTO KARTU TANDA PENDUDUK (KTP)', ktpX + (colWidthKtp / 2), yOffset + 5, { align: 'center' });
+  doc.text('FOTO DOKUMENTASI PENERIMA', penerimaX + (colWidthPenerima / 2), yOffset + 5, { align: 'center' });
+
+  // Photo frames
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
+  doc.rect(ktpX, yOffset + 7, colWidthKtp, colHeightKtp);
+  doc.rect(penerimaX, yOffset + 7, colWidthPenerima, colHeightPenerima);
+
+  // Photo KTP Image drawing
+  if (item.foto_ktp) {
+    try {
+      doc.addImage(item.foto_ktp, 'JPEG', ktpX + 1, yOffset + 8, colWidthKtp - 2, colHeightKtp - 2);
+    } catch (e) {
+      doc.setFont('Helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text('(Format tidak didukung)', ktpX + (colWidthKtp / 2), yOffset + 24, { align: 'center' });
+    }
+  } else {
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(150, 150, 150);
+    doc.text('[Tidak ada foto]', ktpX + (colWidthKtp / 2), yOffset + 24, { align: 'center' });
+  }
+
+  // Photo Penerima Image drawing
+  if (item.foto_penerima) {
+    try {
+      doc.addImage(item.foto_penerima, 'JPEG', penerimaX + 1, yOffset + 8, colWidthPenerima - 2, colHeightPenerima - 2);
+    } catch (e) {
+      doc.setFont('Helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text('(Format tidak didukung)', penerimaX + (colWidthPenerima / 2), yOffset + 24, { align: 'center' });
+    }
+  } else {
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(150, 150, 150);
+    doc.text('[Tidak ada foto]', penerimaX + (colWidthPenerima / 2), yOffset + 24, { align: 'center' });
+  }
+};
+
 // Main Export functions
 export const exportSinglePenyaluranF4 = (item: PenyaluranBlt, penerima: PenerimaBlt[]) => {
   const doc = new jsPDF({
@@ -165,13 +169,14 @@ export const exportSinglePenyaluranF4 = (item: PenyaluranBlt, penerima: Penerima
     format: [215, 330] // F4 size: 215mm x 330mm
   });
 
-  generatePDFPage(doc, item, penerima);
+  generateKopAndHeader(doc, 1, 1, item.periode);
+  drawKpmBlock(doc, item, 53);
 
   const sanitizedNama = item.nama.replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`RESI_BLT_F4_${sanitizedNama}_${item.nik}.pdf`);
 };
 
-export const exportBatchPenyaluranF4 = (items: PenyaluranBlt[], penerima: PenerimaBlt[]) => {
+export const exportBatchPenyaluranF4 = (items: PenyaluranBlt[], penerima: PenerimaBlt[], customLabel?: string) => {
   if (items.length === 0) return;
 
   const doc = new jsPDF({
@@ -180,14 +185,27 @@ export const exportBatchPenyaluranF4 = (items: PenyaluranBlt[], penerima: Peneri
     format: [215, 330] // F4 size: 215mm x 330mm
   });
 
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(items.length / itemsPerPage);
+
   items.forEach((item, idx) => {
-    if (idx > 0) {
+    const pageNum = Math.floor(idx / itemsPerPage) + 1;
+    const indexOnPage = idx % itemsPerPage;
+
+    if (idx > 0 && indexOnPage === 0) {
       doc.addPage();
     }
-    generatePDFPage(doc, item, penerima, idx + 1, items.length);
+
+    if (indexOnPage === 0) {
+      generateKopAndHeader(doc, pageNum, totalPages, item.periode);
+    }
+
+    const yOffset = 53 + indexOnPage * 50;
+    drawKpmBlock(doc, item, yOffset);
   });
 
-  doc.save(`REKAP_BLT_DESA_F4_TOTAL_${items.length}_KPM.pdf`);
+  const suffix = customLabel ? customLabel.toUpperCase().replace(/\s+/g, '_') : 'TOTAL';
+  doc.save(`REKAP_BLT_DESA_F4_${suffix}_${items.length}_KPM.pdf`);
 };
 
 interface RiwayatPenyaluranProps {
@@ -227,9 +245,16 @@ export default function RiwayatPenyaluran({ penyaluran, penerima }: RiwayatPenya
     }).format(val);
   };
 
+  const listJanMar = filteredList.filter(
+    (item) => !item.periode || item.periode === 'Januari - Februari - Maret 2026'
+  );
+  const listAprJun = filteredList.filter(
+    (item) => item.periode === 'April - Mei - Juni 2026'
+  );
+
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 className="text-lg font-extrabold tracking-tight text-slate-950 dark:text-white flex items-center gap-2">
             Riwayat Penyaluran BLT (Audit Trail)
@@ -238,16 +263,43 @@ export default function RiwayatPenyaluran({ penyaluran, penerima }: RiwayatPenya
             Jejak audit digital penyaluran dana desa. Dilengkapi dengan dokumentasi foto KTP dan foto penerima manfaat.
           </p>
         </div>
-        {filteredList.length > 0 && (
+        <div className="flex flex-wrap gap-2 sm:self-start md:self-auto">
           <button
-            onClick={() => exportBatchPenyaluranF4(filteredList, penerima)}
+            onClick={() => {
+              if (listJanMar.length > 0) {
+                exportBatchPenyaluranF4(listJanMar, penerima, 'Jan_Feb_Mar_2026');
+              }
+            }}
             type="button"
-            className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer inline-flex"
-            title="Satu file PDF PDF berisi banyak halaman (Satu halaman per KPM)"
+            disabled={listJanMar.length === 0}
+            className={`flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm ${
+              listJanMar.length > 0
+                ? "bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white cursor-pointer"
+                : "bg-slate-100 dark:bg-slate-850 text-slate-400 dark:text-slate-600 cursor-not-allowed"
+            }`}
+            title="Cetak PDF Rekap KPM Periode Januari - Februari - Maret 2026"
           >
-            <FileDown className="w-4 h-4" /> Cetak Lembaran F4 ({filteredList.length} KPM)
+            <FileDown className="w-4 h-4" /> Cetak Jan-Feb-Maret ({listJanMar.length} KPM)
           </button>
-        )}
+
+          <button
+            onClick={() => {
+              if (listAprJun.length > 0) {
+                exportBatchPenyaluranF4(listAprJun, penerima, 'Apr_Mei_Jun_2026');
+              }
+            }}
+            type="button"
+            disabled={listAprJun.length === 0}
+            className={`flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm ${
+              listAprJun.length > 0
+                ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white cursor-pointer"
+                : "bg-slate-100 dark:bg-slate-850 text-slate-400 dark:text-slate-600 cursor-not-allowed"
+            }`}
+            title="Cetak PDF Rekap KPM Periode April - Mei - Juni 2026"
+          >
+            <FileDown className="w-4 h-4" /> Cetak Apr-Mei-Juni ({listAprJun.length} KPM)
+          </button>
+        </div>
       </div>
 
       {/* Advanced Filter Box */}
@@ -340,7 +392,14 @@ export default function RiwayatPenyaluran({ penyaluran, penerima }: RiwayatPenya
                     {/* Receiver column */}
                     <td className="py-4 px-6">
                       <p className="font-extrabold text-slate-900 dark:text-white text-sm">{item.nama}</p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{item.nik}</p>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 mt-1">
+                        <span className="text-[10px] text-slate-400 font-mono">{item.nik}</span>
+                        {item.periode && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/35">
+                            {item.periode}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Ward columns */}
