@@ -712,7 +712,7 @@ export default function App() {
                 )}
 
                 {activeTab === 'riwayat' && (
-                  <RiwayatPenyaluran penyaluran={penyaluran} />
+                  <RiwayatPenyaluran penyaluran={penyaluran} penerima={penerima} />
                 )}
 
                 {activeTab === 'input-kpm' && currentUser.role === 'Admin' && (

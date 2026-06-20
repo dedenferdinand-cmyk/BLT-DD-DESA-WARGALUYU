@@ -18,6 +18,7 @@ export default function StatsDashboard({ penerima, penyaluran }: StatsDashboardP
   const danaDisalurkan = penerima
     .filter((p) => p.status === 'Sudah Disalurkan')
     .reduce((sum, p) => sum + p.nominal, 0);
+  const sisaDana = totalDana - danaDisalurkan;
   
   // Group by RT/RW for distribution breakdown
   const rtBreakdown = useMemo(() => {
@@ -131,7 +132,7 @@ export default function StatsDashboard({ penerima, penyaluran }: StatsDashboardP
       </div>
 
       {/* Finance Card Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Rencana Dana */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
@@ -155,6 +156,19 @@ export default function StatsDashboard({ penerima, penyaluran }: StatsDashboardP
           </div>
           <span className="text-[11px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-400 px-3 py-1 rounded font-bold tracking-wider uppercase">
             {totalDana > 0 ? Math.round((danaDisalurkan / totalDana) * 100) : 0}% Realisasi
+          </span>
+        </div>
+
+        {/* Sisa Alokasi Anggaran (Secara Otomatis Berkurang) */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-850 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-amber-500 dark:text-amber-400 uppercase tracking-widest">Sisa Alokasi Dana (Belum Salur)</p>
+            <h4 className="text-xl font-bold text-amber-600 dark:text-amber-500 mt-1">
+              {formatIDR(sisaDana)}
+            </h4>
+          </div>
+          <span className="text-[11px] bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-400 px-3 py-1 rounded font-bold tracking-wider uppercase">
+            {totalDana > 0 ? Math.round((sisaDana / totalDana) * 100) : 0}% Berkurang
           </span>
         </div>
       </div>
