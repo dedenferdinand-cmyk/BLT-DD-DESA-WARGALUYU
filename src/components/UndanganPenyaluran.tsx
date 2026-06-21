@@ -19,6 +19,18 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
   // Invitation customization states
   const [hari, setHari] = useState('Kamis');
   const [tanggal, setTanggal] = useState('25 Juni 2026');
+  
+  // Helper to format Indonesian date for letter date (tanggal surat)
+  const getIndonesianDate = () => {
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    const d = new Date();
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  };
+  const [tanggalSurat, setTanggalSurat] = useState(getIndonesianDate());
+
   const [jam, setJam] = useState('09:00 WIB s/d Selesai');
   const [lokasi, setLokasi] = useState('Aula Kantor Desa Wargaluyu');
   const [nomorSurat, setNomorSurat] = useState('005/012/Ds-2026');
@@ -230,7 +242,7 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
   };
 
   // --- DRAW COMPACT UNDANGAN (FOR 4 PER SHEET) ---
-  // A clean, beautiful slip which fits everything elegantly in exactly 76mm height.
+  // A clean, beautiful slip which fits everything elegantly in exactly 79mm height.
   const drawCompactUndangan = (
     doc: jsPDF, 
     kpm: PenerimaBlt, 
@@ -244,7 +256,7 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
     // Outer boundary cutline
     doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(0.15);
-    doc.rect(marginX - 2, yStart, wPrintable + 4, 76, 'S');
+    doc.rect(marginX - 2, yStart, wPrintable + 4, 79, 'S');
 
     // 1. Mini Header / Kop
     doc.setFont('Helvetica', 'bold');
@@ -259,88 +271,86 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
     doc.setLineWidth(0.3);
     doc.line(marginX, yStart + 11, widthTotal - marginX, yStart + 11);
 
-    // Letter meta block & Recipient (Side-by-side)
+    // Letter meta block & Recipient (Side-by-side split grid format)
     // Left: Meta agenda
     doc.setFontSize(8);
     doc.setFont('Helvetica', 'bold');
-    doc.text('AGENDA PENYALURAN', marginX, yStart + 16);
+    doc.text('AGENDA PENYALURAN', marginX, yStart + 15.5);
     
     doc.setFont('Helvetica', 'normal');
-    doc.text(`Hari, Tgl  : ${hari}, ${tanggal}`, marginX, yStart + 21);
-    doc.text(`Waktu     : ${jam}`, marginX, yStart + 25);
-    doc.text(`Lokasi     : ${lokasi}`, marginX, yStart + 29);
+    doc.text(`Hari, Tanggal : ${hari}, ${tanggal}`, marginX, yStart + 20);
+    doc.text(`Waktu/Jam     : ${jam}`, marginX, yStart + 24);
+    doc.text(`Lokasi            : ${lokasi}`, marginX, yStart + 28);
+    doc.text(`Nomor Surat   : ${nomorSurat}`, marginX, yStart + 32);
 
-    // Right: Recipient Details
+    // Right: Recipient Details (framed beautifully in high contrast panel)
     const rightX = marginX + 102;
-    doc.setFont('Helvetica', 'bold');
-    doc.text('KEMENTERIAN SOSIAL / DESA (KPM)', rightX, yStart + 16);
-    doc.setFillColor(252, 252, 252);
-    doc.setDrawColor(220, 220, 220);
-    doc.rect(rightX - 1, yStart + 18, 90, 13, 'F');
-    
-    doc.setFontSize(8.5);
-    doc.setFont('Helvetica', 'bold');
-    doc.text(`BPK/IBU : ${kpm.nama.toUpperCase()}`, rightX + 2, yStart + 22);
-    
+    doc.setFillColor(250, 252, 254);
+    doc.setDrawColor(219, 234, 254);
+    doc.rect(rightX, yStart + 14.5, 89, 13, 'DF');
+
     doc.setFontSize(7.5);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`PENERIMA KPM  : ${kpm.nama.toUpperCase()}`, rightX + 2.5, yStart + 18.5);
+    
+    doc.setFontSize(7);
     doc.setFont('Helvetica', 'normal');
-    doc.text(`NIK: ${kpm.nik}  |  Alamat: RT ${kpm.rt} / RW ${kpm.rw}, Ds. Wargaluyu`, rightX + 2, yStart + 27);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`NIK: ${kpm.nik}  |  Alamat: RT ${kpm.rt} / RW ${kpm.rw}, Ds. Wargaluyu`, rightX + 2.5, yStart + 24);
+    doc.setTextColor(0, 0, 0); // reset
 
     // Middle text block: Short simple instruction (Muat dalam 1 baris)
-    doc.setFontSize(7.5);
-    doc.setFont('Helvetica', 'normal');
-    const contentText = `Mengharap kehadiran Bapak/Ibu di atas secara tertib sesuai tempat dan waktu yang ditentukan dengan mempersiapkan syarat berkas fisik di bawah ini.`;
-    doc.text(contentText, marginX, yStart + 35);
-
-    // Requirements & Notes
-    const reqY = yStart + 40;
     doc.setFont('Helvetica', 'bold');
     doc.setFontSize(7.5);
-    doc.setTextColor(0, 0, 0);
-    doc.text('PERSYARATAN DOKUMEN WAJIB (ASLI):', marginX, reqY);
+    doc.text('PERSYARATAN DOKUMEN WAJIB (ASLI):', marginX, yStart + 38);
 
     doc.setFont('Helvetica', 'normal');
     let reqStr = '';
-    if (bawaKtpArc) reqStr += '- KTP Asli  ';
-    if (bawaKkArc) reqStr += '- KK Asli  ';
-    if (bawaUndanganArc) reqStr += '- Lembar Undangan ini';
-    doc.text(reqStr, marginX + 4, reqY + 4.5);
+    if (bawaKtpArc) reqStr += '• KTP Asli    ';
+    if (bawaKkArc) reqStr += '• KK Asli    ';
+    if (bawaUndanganArc) reqStr += '• Lembar Undangan ini';
+    doc.text(reqStr, marginX + 2, yStart + 42);
 
-    // Emphasized Strict Notes (Tidak Dapat Diwakilkan & Kunjungan Petugas seandainya sakit)
-    doc.setFillColor(254, 242, 242); // very light red bg
+    // STRICT CAUTION ALERT BOX (Full width, eye-catching text)
+    doc.setFillColor(254, 242, 242); 
     doc.setDrawColor(252, 165, 165);
-    doc.rect(marginX, reqY + 7.5, wPrintable, 7, 'DF');
+    doc.rect(marginX, yStart + 45.5, wPrintable, 6.5, 'DF');
 
     doc.setFont('Helvetica', 'bold');
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
     doc.setTextColor(153, 27, 27); // Dark red
-    doc.text('CATATAN: TIDAK DAPAT DIWAKILKAN TANPA KECUALI. Jika KPM sedang sakit / berhalangan hadir fisik, petugas desa akan mengantarkan bantuan langsung ke tempat tinggal (kunjungan rumah).', marginX + 2, reqY + 12);
+    doc.text('PENTING: TIDAK DAPAT DIWAKILKAN. Jika KPM sakit terbaring/lansia, petugas desa akan mengantarkan hak bantuan langsung ke rumah.', marginX + 2, yStart + 49.8);
     doc.setTextColor(0, 0, 0); // reset
 
-    // Lower footer: Barcode left, Signature right
-    const footY = reqY + 17;
+    // Lower footer: Large Barcode Scanner left, Date & Signature right
+    const footY = yStart + 54.5;
 
+    // ENLARGED BARCODE (QR Code)! Expanded to 20x20mm for super effortless scan
     if (qrBase64) {
       try {
-        doc.addImage(qrBase64, 'JPEG', marginX, footY, 13, 13);
+        doc.addImage(qrBase64, 'JPEG', marginX, footY, 20, 20);
       } catch (err) {
-        doc.rect(marginX, footY, 13, 13);
+        doc.rect(marginX, footY, 20, 20);
       }
     }
 
     doc.setFont('Helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text('KODE SCAN SALUR', marginX + 15, footY + 4);
+    doc.setFontSize(7.5);
+    doc.text('KODE SCAN SALUR', marginX + 23, footY + 4.5);
     doc.setFont('Helvetica', 'normal');
-    doc.text(`NIK: ${kpm.nik}`, marginX + 15, footY + 8.5);
+    doc.setFontSize(7);
+    doc.text('NIK: ' + kpm.nik, marginX + 23, footY + 9);
+    doc.text('Pindai untuk pencairan', marginX + 23, footY + 13);
 
-    // Authorized Signature
+    // Authorized Signature with dedicated custom tanggalSurat
     const sigX = widthTotal - marginX - 52;
     doc.setFontSize(7.5);
-    doc.text('Pemerintah Desa Wargaluyu,', sigX, footY + 1);
+    doc.text(`Wargaluyu, ${tanggalSurat}`, sigX, footY + 3.5);
+    doc.setFont('Helvetica', 'normal');
+    doc.text('Kepala Desa Wargaluyu,', sigX, footY + 7.5);
     doc.setFont('Helvetica', 'bold');
-    doc.text('Kepala Desa', sigX, footY + 4.5);
-    doc.text(kepalaDesa, sigX, footY + 13);
+    doc.text(kepalaDesa, sigX, footY + 18.5);
   };
 
   // --- DRAW MEDIUM UNDANGAN (FOR 2 PER SHEET) ---
@@ -436,9 +446,10 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
 
     const sigX = widthTotal - marginX - 55;
     doc.setFontSize(8.5);
-    doc.text('Kepala Desa Wargaluyu,', sigX, footY + 2);
+    doc.text(`Wargaluyu, ${tanggalSurat}`, sigX, footY + 1);
+    doc.text('Kepala Desa Wargaluyu,', sigX, footY + 5.5);
     doc.setFont('Helvetica', 'bold');
-    doc.text(kepalaDesa, sigX, footY + 14);
+    doc.text(kepalaDesa, sigX, footY + 17);
   };
 
   // --- DRAW FULL UNDANGAN (FOR 1 PER SHEET) ---
@@ -480,7 +491,7 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
     doc.text(`Lamp     : -`, marginX, yStart + 45);
     doc.text(`Hal        : Undangan Penyaluran BLT Dana Desa`, marginX, yStart + 50);
 
-    doc.text(`Wargaluyu, ${tanggal}`, widthTotal - marginX - 45, yStart + 35);
+    doc.text(`Wargaluyu, ${tanggalSurat}`, widthTotal - marginX - 45, yStart + 35);
     
     doc.text(`Kepada Yth. KPM Penerima BLT:`, marginX, yStart + 58);
     doc.setFont('Helvetica', 'bold');
@@ -653,13 +664,25 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
 
             {/* Field 4: Tanggal */}
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Tanggal Penyaluran</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Tanggal Penyaluran (Kegiatan)</label>
               <input
                 type="text"
                 value={tanggal}
                 onChange={(e) => setTanggal(e.target.value)}
                 className="w-full text-xs bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-850 rounded-lg p-2.5"
                 placeholder="Contoh: 25 Juni 2026"
+              />
+            </div>
+
+            {/* Field 4b: Tanggal Surat (Pembuatan) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Tanggal Surat (Pembuatan)</label>
+              <input
+                type="text"
+                value={tanggalSurat}
+                onChange={(e) => setTanggalSurat(e.target.value)}
+                className="w-full text-xs bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-850 rounded-lg p-2.5 font-medium"
+                placeholder="Contoh: 21 Juni 2026"
               />
             </div>
 
@@ -1006,8 +1029,8 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
 
                     {/* Right: Signature */}
                     <div className="text-right text-[9px] space-y-0.5 leading-tight">
-                      <p className="text-slate-400">Pemerintah Desa Wargaluyu,</p>
-                      <p className="font-bold">Kepala Desa</p>
+                      <p className="text-slate-400">Wargaluyu, {tanggalSurat}</p>
+                      <p className="text-slate-400">Kepala Desa Wargaluyu,</p>
                       <p className="h-4"></p> {/* stamp spot */}
                       <p className="font-bold text-slate-900 dark:text-white underline">{kepalaDesa}</p>
                     </div>
@@ -1035,7 +1058,7 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
                       <p><b>Hal:</b> Undangan Penyaluran BLT Dana Desa</p>
                     </div>
                     <div className="text-right">
-                      <p>Wargaluyu, {tanggal}</p>
+                      <p>Wargaluyu, {tanggalSurat}</p>
                       <p className="mt-2 text-left">Kepada Yth.</p>
                       <div className="text-left bg-white dark:bg-slate-950 p-2 rounded-lg border border-slate-150 dark:border-slate-850 mt-1 shadow-sm leading-tight">
                         <p className="font-bold text-slate-900 dark:text-white uppercase text-[10px]">{previewKpm.nama}</p>
@@ -1105,9 +1128,9 @@ export default function UndanganPenyaluran({ penerima }: UndanganPenyaluranProps
 
                     {/* Signature */}
                     <div className="text-right space-y-1">
-                      <p className="text-[9px]">Mengetahui / Mengundang,</p>
+                      <p className="text-[9px]">Wargaluyu, {tanggalSurat}</p>
                       <p className="text-[9px] font-bold">Kepala Desa Wargaluyu</p>
-                      <div className="h-10"></div> {/* Blank for stamp */}
+                      <div className="h-8"></div> {/* Blank for stamp */}
                       <p className="text-[9px] font-bold underline">{kepalaDesa}</p>
                       <p className="text-[8px] text-slate-400 font-semibold">NIP / Pangkat: Kepala Desa</p>
                     </div>
