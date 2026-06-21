@@ -192,6 +192,19 @@ function mapPenyaluranToSupabase(s: PenyaluranBlt): any {
   };
 }
 
+function decodePenyaluranPeriod(s: any): any {
+  if (!s) return s;
+  const decoded = { ...s };
+  if (!decoded.periode && decoded.petugas && decoded.petugas.includes("[PERIODE:")) {
+    const match = decoded.petugas.match(/^(.*?)\s*\[PERIODE:\s*(.*?)\]$/i);
+    if (match) {
+      decoded.petugas = match[1].trim();
+      decoded.periode = match[2].trim();
+    }
+  }
+  return decoded;
+}
+
 async function safeInsertPenyaluran(payload: any | any[]) {
   if (!supabase) return { error: new Error("Supabase client is not configured") };
   
@@ -199,9 +212,12 @@ async function safeInsertPenyaluran(payload: any | any[]) {
   const rows = isArray ? payload : [payload];
 
   let { error } = await supabase.from("penyaluran_blt").insert(rows);
-  if (error && error.message && (error.message.includes("periode") || error.message.includes("schema cache"))) {
-    console.warn("[WARN] Supabase table lacks 'periode' column in schema cache. Retrying insert without 'periode'...");
-    const rowsWithoutPeriode = rows.map(({ periode, ...rest }) => rest);
+  if (error && error.message && (error.message.includes("periode") || error.message.includes("schema cache") || error.message.includes("column"))) {
+    console.warn("[WARN] Supabase table lacks 'periode' column in schema cache. Retrying insert with encoded 'petugas'...");
+    const rowsWithoutPeriode = rows.map(({ periode, petugas, ...rest }) => ({
+      ...rest,
+      petugas: periode ? `${petugas} [PERIODE: ${periode}]` : petugas
+    }));
     let retryResult = await supabase.from("penyaluran_blt").insert(rowsWithoutPeriode);
     return retryResult;
   }
@@ -288,10 +304,10 @@ async function startServer() {
           const mappedSeeds = SEED_PENYALURAN.map(mapPenyaluranToSupabase);
           await safeInsertPenyaluran(mappedSeeds);
           const { data: seededData } = await supabase.from("penyaluran_blt").select("*").order("created_at", { ascending: false });
-          if (seededData) return seededData as PenyaluranBlt[];
+          if (seededData) return seededData.map(decodePenyaluranPeriod) as PenyaluranBlt[];
         }
 
-        return data as PenyaluranBlt[];
+        return (data || []).map(decodePenyaluranPeriod) as PenyaluranBlt[];
       } catch (err: any) {
         lastPenyaluranError = err.message || JSON.stringify(err);
         console.warn("[WARN] Gagal mengambil riwayat dari Supabase:", lastPenyaluranError);

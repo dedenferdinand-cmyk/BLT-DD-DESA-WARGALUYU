@@ -23,6 +23,19 @@ export const isSupabaseConfigured = () => {
   return !!config.url && !!config.key;
 };
 
+const decodePenyaluranPeriod = (s: any): any => {
+  if (!s) return s;
+  const decoded = { ...s };
+  if (!decoded.periode && decoded.petugas && decoded.petugas.includes('[PERIODE:')) {
+    const match = decoded.petugas.match(/^(.*?)\s*\[PERIODE:\s*(.*?)\]$/i);
+    if (match) {
+      decoded.petugas = match[1].trim();
+      decoded.periode = match[2].trim();
+    }
+  }
+  return decoded;
+};
+
 // Initialize the real Supabase client if configured
 export const supabase = isSupabaseConfigured() 
   ? createClient(config.url, config.key) 
@@ -443,7 +456,7 @@ export const DataService = {
     try {
       const res = await fetch('/api/penyaluran');
       if (res.ok) {
-        return await res.json() as PenyaluranBlt[];
+        return (await res.json() as PenyaluranBlt[]).map(decodePenyaluranPeriod);
       }
     } catch (err) {
       console.warn('API error, falling back to direct Supabase:', err);
@@ -456,7 +469,7 @@ export const DataService = {
           .select('*')
           .order('created_at', { ascending: false });
         if (!error && data) {
-          return data as PenyaluranBlt[];
+          return (data || []).map(decodePenyaluranPeriod) as PenyaluranBlt[];
         }
         console.warn('Supabase direct history failed:', error);
       } catch (e) {
@@ -464,7 +477,8 @@ export const DataService = {
       }
     }
 
-    return sandboxDb.getPenyaluranList();
+    const localList = await sandboxDb.getPenyaluranList();
+    return localList.map(decodePenyaluranPeriod);
   },
 
   addPenyaluran: async (item: Omit<PenyaluranBlt, 'id' | 'status'>): Promise<PenyaluranBlt> => {
@@ -483,7 +497,7 @@ export const DataService = {
         body: JSON.stringify(item)
       });
       if (res.ok) {
-        return await res.json() as PenyaluranBlt;
+        return decodePenyaluranPeriod(await res.json() as PenyaluranBlt);
       }
     } catch (err) {
       console.warn('API error, falling back to direct Supabase:', err);
@@ -496,7 +510,18 @@ export const DataService = {
           id: toDeterministicUuid(newItem.id),
           penerima_id: toDeterministicUuid(newItem.penerima_id)
         };
-        const { error: err1 } = await supabase.from('penyaluran_blt').insert([mapped]);
+        let { error: err1 } = await supabase.from('penyaluran_blt').insert([mapped]);
+        if (err1 && err1.message && (err1.message.includes('periode') || err1.message.includes('schema cache') || err1.message.includes('column'))) {
+          // Retry without 'periode' and bundle it in 'petugas'
+          const mappedWithoutPeriod: any = {
+            ...mapped,
+            petugas: mapped.periode ? `${mapped.petugas} [PERIODE: ${mapped.periode}]` : mapped.petugas
+          };
+          delete mappedWithoutPeriod.periode;
+          const { error: errRetry } = await supabase.from('penyaluran_blt').insert([mappedWithoutPeriod]);
+          err1 = errRetry;
+        }
+
         if (!err1) {
           const pUuid = toDeterministicUuid(newItem.penerima_id);
           await supabase

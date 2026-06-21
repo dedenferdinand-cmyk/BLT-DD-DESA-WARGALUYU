@@ -13,6 +13,7 @@ import ManualSearch from './components/ManualSearch';
 import RiwayatPenyaluran from './components/RiwayatPenyaluran';
 import DbBackupRestore from './components/DbBackupRestore';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
+import UndanganPenyaluran from './components/UndanganPenyaluran';
 
 import { 
   Users, 
@@ -31,7 +32,8 @@ import {
   Clock,
   Menu,
   X,
-  Compass
+  Compass,
+  MailOpen
 } from 'lucide-react';
 
 // Live Time Checker helper
@@ -609,6 +611,18 @@ export default function App() {
                 <History className="w-4 h-4" /> RIWAYAT DANA
               </button>
 
+              {/* Button 4B: Cetak Undangan Penyaluran */}
+              <button
+                onClick={() => { setActiveTab('undangan'); setIsMobileMenuOpen(false); }}
+                className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl cursor-pointer transition-all ${
+                  activeTab === 'undangan'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-705 dark:text-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <MailOpen className="w-4 h-4" /> CETAK UNDANGAN
+              </button>
+
               {/* Button 5: Input Penerima */}
               {currentUser.role === 'Admin' ? (
                 <button
@@ -718,6 +732,10 @@ export default function App() {
 
                 {activeTab === 'riwayat' && (
                   <RiwayatPenyaluran penyaluran={penyaluran} penerima={penerima} />
+                )}
+
+                {activeTab === 'undangan' && (
+                  <UndanganPenyaluran penerima={penerima} />
                 )}
 
                 {activeTab === 'input-kpm' && currentUser.role === 'Admin' && (
